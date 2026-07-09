@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
-import { MessageSquare, User, Calendar, Clock, Users, BookOpen, Award, Smile, ChevronRight, FileText, Send, RefreshCw } from 'lucide-react';
+import { 
+  MessageSquare, User, Calendar, Clock, Users, BookOpen, 
+  Award, Smile, FileText, Send, Sparkles, CheckCircle2, AlertCircle
+} from 'lucide-react';
 import { updateField, setAllFields, addChatMessage, setActiveId, clearForm } from './store';
 
 function App() {
@@ -12,23 +15,48 @@ function App() {
   
   const [chatInput, setChatInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState({ type: '', text: '' });
 
   const handleInputChange = (field, value) => {
     dispatch(updateField({ field, value }));
   };
 
+
+ 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    setStatusMessage({ type: '', text: '' });
+
+    // 🚨 FORCE EXTRACTION: Read directly from what you see on the screen!
     try {
-      await axios.post('http://localhost:8000/api/interactions', formData);
+      const payload = {
+        hcp_name: document.querySelector('input[placeholder="Dr. Jane Doe"]')?.value || formData.hcp_name || "Unknown Doctor",
+        interaction_type: document.querySelector('select')?.value || formData.interaction_type || "Meeting",
+        date: document.querySelector('input[type="date"]')?.value || formData.date || "",
+        time: document.querySelector('input[type="time"]')?.value || formData.time || "",
+        attendees: document.querySelector('input[placeholder="Medical staff, assistants..."]')?.value || formData.attendees || "",
+        topics_discussed: document.querySelector('textarea[placeholder*="What parameters"]')?.value || formData.topics_discussed || "",
+        materials_shared: document.querySelector('input[placeholder*="Brochures"]')?.value || formData.materials_shared || "",
+        samples_distributed: document.querySelector('input[placeholder*="Product packages"]')?.value || formData.samples_distributed || "",
+        observed_sentiment: formData.sentiment || formData.observed_sentiment || "Neutral",
+        outcomes: document.querySelector('textarea[placeholder*="Acknowledge"]')?.value || formData.outcomes || "",
+        follow_up_actions: document.querySelector('textarea[placeholder*="Next scheduled"]')?.value || formData.followup_actions || formData.follow_up_actions || ""
+      };
+
+      console.log("CRITICAL SUBMIT RUNNING - Target Payload:", payload);
+
+      // Explicit direct IP to confirm endpoint
+      await axios.post('http://127.0.0.1:8000/api/interactions', payload);
+      
+      setStatusMessage({ type: 'success', text: 'Interaction logged successfully to database!' });
       alert('Interaction Logged Successfully into DB!');
       dispatch(clearForm());
     } catch (err) {
-      console.error(err);
+      console.error("Axios Submission Failed:", err);
+      setStatusMessage({ type: 'error', text: 'Error saving interaction entry.' });
       alert('Error saving interaction entry.');
     }
   };
-
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     
@@ -38,18 +66,24 @@ function App() {
     setLoading(true);
 
     try {
-      const res = await axios.post('http://localhost:8000/api/chat', {
+      const res = await axios.post('http://127.0.0.1:8000/api/chat', { 
+    
         message: userMsg,
         context_interaction_id: activeId
       });
 
-      dispatch(addChatMessage({ sender: 'ai', text: res.data.reply }));
+      dispatch(addChatMessage({ sender: 'ai', text: res.data.reply || res.data.data?.reply || "Parsed successfully." }));
 
-      // Auto-populate the Left Form Fields natively if tool extracted data!
-      if (res.data.tool_used === 'log_interaction' && res.data.extracted_data) {
-        dispatch(setAllFields(res.data.extracted_data));
-        if (res.data.tool_output?.saved_record_id) {
-          dispatch(setActiveId(res.data.tool_output.saved_record_id));
+      // Direct data payload mapping normalization fallback
+      const extracted = res.data.extracted_data || res.data.data;
+      if (extracted) {
+        dispatch(setAllFields(extracted));
+        // Keep radio selection sync aligned
+        if (extracted.observed_sentiment) {
+          dispatch(updateField({ field: 'sentiment', value: extracted.observed_sentiment }));
+        }
+        if (extracted.follow_up_actions) {
+          dispatch(updateField({ field: 'followup_actions', value: extracted.follow_up_actions }));
         }
       }
     } catch (err) {
@@ -60,132 +94,188 @@ function App() {
   };
 
   return (
-    <div style={{ fontFamily: '"Inter", sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh', padding: '24px' }}>
-      <header style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#0f172a' }}>Log HCP Interaction</h1>
+    <div style={{ fontFamily: '"Inter", -apple-system, sans-serif', backgroundColor: '#f1f5f9', minHeight: '100vh', padding: '32px' }}>
+      
+      {/* HEADER ROW */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+        <div>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.025em', margin: 0 }}>HCP Workspace</h1>
+          <p style={{ fontSize: '14px', color: '#64748b', margin: '4px 0 0 0' }}>Capture structured medical representative notes cleanly.</p>
+        </div>
+        
+        {statusMessage.text && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            backgroundColor: statusMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
+            color: statusMessage.type === 'success' ? '#065f46' : '#991b1b',
+            border: `1px solid ${statusMessage.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+          }}>
+            {statusMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            {statusMessage.text}
+          </div>
+        )}
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+      {/* TWO COLUMN PANEL VIEW */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '32px', alignItems: 'start' }}>
         
-        {/* LEFT COLUMN: INTERACTION DETAIL FORM */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#1e293b' }}>Interaction Details</h2>
+        {/* LEFT COLUMN: CRISP DATA ENTRY CONTAINER */}
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '32px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+            <div style={{ padding: '6px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '6px' }}><Sparkles size={18}/></div>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b', margin: 0 }}>Interaction Summary</h2>
+          </div>
           
           <form onSubmit={handleFormSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><User size={16} inline/> HCP Name</label>
-                <input style={inputStyle} type="text" placeholder="Search or select HCP..." value={formData.hcp_name} onChange={(e) => handleInputChange('hcp_name', e.target.value)} required />
+                <label style={labelStyle}><User size={14} style={{ marginRight: '6px' }}/> HCP Name</label>
+                <input style={inputStyle} type="text" placeholder="Dr. Jane Doe" value={formData.hcp_name || ''} onChange={(e) => handleInputChange('hcp_name', e.target.value)} required />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>Interaction Type</label>
-                <select style={inputStyle} value={formData.interaction_type} onChange={(e) => handleInputChange('interaction_type', e.target.value)}>
-                  <option value="Meeting">Meeting</option>
-                  <option value="Call">Call</option>
-                  <option value="Email">Email</option>
+                <label style={labelStyle}>Interaction Type</label>
+                <select style={inputStyle} value={formData.interaction_type || 'Meeting'} onChange={(e) => handleInputChange('interaction_type', e.target.value)}>
+                  <option value="Meeting">🤝 In-Person Meeting</option>
+                  <option value="Call">📞 Phone Call</option>
+                  <option value="Email">📧 Email Correspondence</option>
                 </select>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><Calendar size={16}/> Date</label>
-                <input style={inputStyle} type="date" value={formData.date} onChange={(e) => handleInputChange('date', e.target.value)} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><Clock size={16}/> Time</label>
-                <input style={inputStyle} type="time" value={formData.time} onChange={(e) => handleInputChange('time', e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><Users size={16}/> Attendees</label>
-              <input style={inputStyle} type="text" placeholder="Enter names..." value={formData.attendees} onChange={(e) => handleInputChange('attendees', e.target.value)} />
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><BookOpen size={16}/> Topics Discussed</label>
-              <textarea style={{...inputStyle, height: '80px'}} placeholder="Enter key discussion points..." value={formData.topics_discussed} onChange={(e) => handleInputChange('topics_discussed', e.target.value)} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>Materials Shared</label>
-                <input style={inputStyle} type="text" placeholder="Brochures, links..." value={formData.materials_shared} onChange={(e) => handleInputChange('materials_shared', e.target.value)} />
+                <label style={labelStyle}><Calendar size={14} style={{ marginRight: '6px' }}/> Date</label>
+                <input style={inputStyle} type="date" value={formData.date || ''} onChange={(e) => handleInputChange('date', e.target.value)} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>Samples Distributed</label>
-                <input style={inputStyle} type="text" placeholder="Product samples..." value={formData.samples_distributed} onChange={(e) => handleInputChange('samples_distributed', e.target.value)} />
+                <label style={labelStyle}><Clock size={14} style={{ marginRight: '6px' }}/> Time</label>
+                <input style={inputStyle} type="time" value={formData.time || ''} onChange={(e) => handleInputChange('time', e.target.value)} />
               </div>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><Smile size={16}/> Observed HCP Sentiment</label>
-              <div style={{ display: 'flex', gap: '20px', marginTop: '8px' }}>
-                {['Positive', 'Neutral', 'Negative'].map((s) => (
-                  <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <input type="radio" name="sentiment" value={s} checked={formData.sentiment === s} onChange={() => handleInputChange('sentiment', s)} />
-                    {s}
-                  </label>
-                ))}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}><Users size={14} style={{ marginRight: '6px' }}/> Logged Attendees</label>
+              <input style={inputStyle} type="text" placeholder="Medical staff, assistants..." value={formData.attendees || ''} onChange={(e) => handleInputChange('attendees', e.target.value)} />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}><BookOpen size={14} style={{ marginRight: '6px' }}/> Topics Discussed</label>
+              <textarea style={{...inputStyle, height: '90px', resize: 'vertical'}} placeholder="What parameters or drug profiles were processed?" value={formData.topics_discussed || ''} onChange={(e) => handleInputChange('topics_discussed', e.target.value)} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <label style={labelStyle}>Materials Shared</label>
+                <input style={inputStyle} type="text" placeholder="Brochures, studies..." value={formData.materials_shared || ''} onChange={(e) => handleInputChange('materials_shared', e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Samples Distributed</label>
+                <input style={inputStyle} type="text" placeholder="Product packages..." value={formData.samples_distributed || ''} onChange={(e) => handleInputChange('samples_distributed', e.target.value)} />
               </div>
             </div>
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><Award size={16}/> Outcomes</label>
-              <textarea style={{...inputStyle, height: '60px'}} placeholder="Key outcomes or agreements..." value={formData.outcomes} onChange={(e) => handleInputChange('outcomes', e.target.value)} />
+            <div style={{ marginBottom: '24px', backgroundColor: '#f8fafc', padding: '14px 18px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <label style={{...labelStyle, marginBottom: '10px'}}><Smile size={14} style={{ marginRight: '6px' }}/> Observed HCP Sentiment</label>
+              <div style={{ display: 'flex', gap: '24px' }}>
+                {['Positive', 'Neutral', 'Negative'].map((s) => {
+                  const isChecked = (formData.sentiment === s || formData.observed_sentiment === s);
+                  return (
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: isChecked ? '#1e293b' : '#64748b' }}>
+                      <input type="radio" name="sentiment" value={s} checked={isChecked} onChange={() => {
+                        handleInputChange('sentiment', s);
+                        handleInputChange('observed_sentiment', s);
+                      }} style={{ accentColor: '#2563eb', transform: 'scale(1.1)' }} />
+                      {s === 'Positive' ? '🟢 Positive' : s === 'Negative' ? '🔴 Negative' : '🟡 Neutral'}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}><FileText size={16}/> Follow-up Actions</label>
-              <textarea style={{...inputStyle, height: '60px'}} placeholder="Next steps..." value={formData.followup_actions} onChange={(e) => handleInputChange('followup_actions', e.target.value)} />
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}><Award size={14} style={{ marginRight: '6px' }}/> Outcomes & Core Feedback</label>
+              <textarea style={{...inputStyle, height: '70px', resize: 'vertical'}} placeholder="Acknowledge agreements or direct pushbacks..." value={formData.outcomes || ''} onChange={(e) => handleInputChange('outcomes', e.target.value)} />
             </div>
 
-            <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>
-              Submit Structured Log
+            <div style={{ marginBottom: '28px' }}>
+              <label style={labelStyle}><FileText size={14} style={{ marginRight: '6px' }}/> Action Items & Follow-ups</label>
+              <textarea style={{...inputStyle, height: '70px', resize: 'vertical'}} placeholder="Next scheduled meeting objectives..." value={formData.followup_actions || formData.follow_up_actions || ''} onChange={(e) => {
+                handleInputChange('followup_actions', e.target.value);
+                handleInputChange('follow_up_actions', e.target.value);
+              }} />
+            </div>
+
+            <button type="submit" style={submitBtnStyle}>
+              Save Document Entry
             </button>
           </form>
         </div>
 
-        {/* RIGHT COLUMN: AI CONVERSATIONAL SIDEBAR CONTAINER */}
-        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px', backgroundColor: '#0f172a', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <MessageSquare size={20} />
+        {/* RIGHT COLUMN: MODERN INTERACTIVE MESSAGING CANVAS */}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '780px', backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          <div style={{ padding: '20px 24px', backgroundColor: '#0f172a', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ backgroundColor: '#1e293b', padding: '8px', borderRadius: '8px', color: '#38bdf8' }}>
+              <MessageSquare size={20} />
+            </div>
             <div>
-              <div style={{ fontWeight: '600', fontSize: '15px' }}>AI Assistant</div>
-              <div style={{ fontSize: '11px', color: '#94a3b8' }}>LangGraph Agent Workflow Active</div>
+              <div style={{ fontWeight: '700', fontSize: '15px', letterSpacing: '-0.01em' }}>AI Assistant Intake</div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>LangGraph Cognitive Workflow Running</div>
             </div>
           </div>
 
-          <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* CHAT CHANNELS MESSAGES CONTAINER */}
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#fafafa' }}>
+            {chatHistory.length === 0 && (
+              <div style={{ margin: 'auto', textAlign: 'center', maxWidth: '240px', color: '#94a3b8' }}>
+                <MessageSquare size={32} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
+                <p style={{ fontSize: '13px', lineHeight: '1.5' }}>Paste your interaction transcript here to auto-populate the record forms.</p>
+              </div>
+            )}
+            
             {chatHistory.map((msg, idx) => (
               <div key={idx} style={{ alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
                 <div style={{
-                  padding: '10px 14px',
-                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  borderRadius: msg.sender === 'user' ? '12px 12px 0 12px' : '12px 12px 12px 0',
                   fontSize: '14px',
-                  lineHeight: '1.4',
-                  backgroundColor: msg.sender === 'user' ? '#2563eb' : '#f1f5f9',
-                  color: msg.sender === 'user' ? '#ffffff' : '#334155'
+                  lineHeight: '1.5',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  backgroundColor: msg.sender === 'user' ? '#2563eb' : '#ffffff',
+                  color: msg.sender === 'user' ? '#ffffff' : '#334155',
+                  border: msg.sender === 'user' ? 'none' : '1px solid #e2e8f0'
                 }}>
                   {msg.text}
                 </div>
               </div>
             ))}
-            {loading && <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}><RefreshCw size={12} className="animate-spin" inline/> Agent is processing intent structure...</div>}
+            
+            {loading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontStyle: 'italic', paddingLeft: '4px' }}>
+                <div className="animate-pulse" style={{ width: '6px', height: '6px', backgroundColor: '#2563eb', borderRadius: '50%' }}></div>
+                AI Agent is parsing text unstructured semantics...
+              </div>
+            )}
           </div>
 
-          <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '8px' }}>
+          {/* TEXT ENTRY INPUT ACTIONS BAR */}
+          <div style={{ padding: '18px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', backgroundColor: '#ffffff' }}>
             <input
-              style={{ ...inputStyle, marginBottom: 0 }}
+              style={{ ...inputStyle, borderRadius: '8px', backgroundColor: '#f8fafc' }}
               type="text"
-              placeholder="Describe interaction or ask tool..."
+              placeholder="Paste rep transcript details..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
             />
-            <button onClick={handleSendMessage} style={{ padding: '10px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-              <Send size={18} />
+            <button onClick={handleSendMessage} style={sendBtnStyle}>
+              <Send size={16} />
             </button>
           </div>
         </div>
@@ -195,14 +285,56 @@ function App() {
   );
 }
 
+// ---------------------------------------------------------
+// REUSABLE DECORATIVE UI LAYOUT CSS STYLES
+// ---------------------------------------------------------
+const labelStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  fontSize: '13px',
+  fontWeight: '600',
+  marginBottom: '8px',
+  color: '#475569'
+};
+
 const inputStyle = {
   width: '100%',
-  padding: '10px',
+  padding: '11px 14px',
   border: '1px solid #cbd5e1',
-  borderRadius: '6px',
+  borderRadius: '8px',
   fontSize: '14px',
+  color: '#1e293b',
   outline: 'none',
-  boxSizing: 'border-box'
+  boxSizing: 'border-box',
+  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+  fontFamily: 'inherit'
+};
+
+const submitBtnStyle = {
+  width: '100%',
+  padding: '14px',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '8px',
+  fontSize: '15px',
+  fontWeight: '600',
+  cursor: 'pointer',
+  transition: 'background-color 0.15s ease',
+  boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)'
+};
+
+const sendBtnStyle = {
+  padding: '0 16px',
+  backgroundColor: '#0f172a',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'background-color 0.15s ease'
 };
 
 export default App;
