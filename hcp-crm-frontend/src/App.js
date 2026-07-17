@@ -46,7 +46,8 @@ function App() {
       console.log("CRITICAL SUBMIT RUNNING - Target Payload:", payload);
 
       // Explicit direct IP to confirm endpoint
-      await axios.post('http://127.0.0.1:8000/api/interactions', payload);
+      await axios.post('https://ai-first-hcp-crm-production.up.railway.app/api/interactions', payload);
+ 
       
       setStatusMessage({ type: 'success', text: 'Interaction logged successfully to database!' });
       alert('Interaction Logged Successfully into DB!');
@@ -66,7 +67,7 @@ function App() {
     setLoading(true);
 
     try {
-      const res = await axios.post('http://127.0.0.1:8000/api/chat', { 
+      const res = await axios.post('https://ai-first-hcp-crm-production.up.railway.app/api/chat', {
     
         message: userMsg,
         context_interaction_id: activeId
