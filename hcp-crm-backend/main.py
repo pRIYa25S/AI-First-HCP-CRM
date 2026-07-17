@@ -8,14 +8,12 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, Date, Time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# LangGraph & LangChain Dependencies
+
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
-# ==========================================
-# 1. DATABASE CONFIGURATION (SQLite for easy 1-day setup)
-# ==========================================
+
 DATABASE_URL = "sqlite:///./hcp_crm.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -44,7 +42,6 @@ class HCPModel(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Seed Mock HCP Data if table is empty
 db = SessionLocal()
 if db.query(HCPModel).count() == 0:
     mock_hcps = [
@@ -64,9 +61,7 @@ def get_db():
     finally:
         db.close()
 
-# ==========================================
-# 2. PYDANTIC SCHEMAS
-# ==========================================
+
 class InteractionSchema(BaseModel):
     id: Optional[int] = None
     hcp_name: str
@@ -88,9 +83,6 @@ class ChatRequest(BaseModel):
     message: str
     context_interaction_id: Optional[int] = None
 
-# ==========================================
-# 3. LANGGRAPH AGENT STATE & TOOL DEFINITIONS
-# ==========================================
 class AgentState(TypedDict):
     user_message: str
     context_id: Optional[int]
@@ -99,10 +91,8 @@ class AgentState(TypedDict):
     tool_output: Dict[str, Any]
     final_response: str
 
-# Initialize LLM (Gemma2-9b-it via Groq)
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.1)
 
-# Tool 1: Log Interaction Data Extraction
 def tool_log_interaction(text: str) -> dict:
     """Parses unformatted speech or text into structured CRM fields."""
     prompt = f"""
@@ -119,7 +109,7 @@ def tool_log_interaction(text: str) -> dict:
     except Exception:
         return {"topics_discussed": text, "sentiment": "Neutral", "hcp_name": "Unknown"}
 
-# Tool 2: Edit Interaction
+
 def tool_edit_interaction(text: str, record_id: int, db: Session) -> dict:
     """Modifies existing logged CRM records."""
     record = db.query(InteractionModel).filter(InteractionModel.id == record_id).first()
@@ -142,7 +132,6 @@ def tool_edit_interaction(text: str, record_id: int, db: Session) -> dict:
     except Exception as e:
         return {"error": "Failed to parse update updates instruction.", "details": str(e)}
 
-# Tool 3: Search HCP Directory
 def tool_search_hcp(text: str, db: Session) -> dict:
     """Searches for registered Medical Professionals in the database directory."""
     hcps = db.query(HCPModel).all()
@@ -155,7 +144,7 @@ def tool_search_hcp(text: str, db: Session) -> dict:
     except:
         return {"search_results": {"matched_name": "None"}}
 
-# Tool 4: Suggest Followups
+
 def tool_suggest_followups(text: str) -> dict:
     """Generates next-action actionable task entries based on ongoing discussions."""
     prompt = f"Based on this interaction text: '{text}', suggest 2 bullet points for compliance-friendly next-steps or follow-ups for a medical representative. Return JSON with key 'suggested_followups' as a string list."
@@ -165,7 +154,6 @@ def tool_suggest_followups(text: str) -> dict:
     except:
         return {"suggested_followups": ["Schedule follow-up meeting in 2 weeks"]}
 
-# Tool 5: Extract Sentiment
 def tool_extract_sentiment(text: str) -> dict:
     """Runs isolated emotional analysis to tag professional sentiment."""
     prompt = f"Analyze the professional tone/sentiment of this dialogue: '{text}'. Classify strictly as 'Positive', 'Neutral', or 'Negative'. Return JSON with key 'sentiment'."
@@ -175,9 +163,6 @@ def tool_extract_sentiment(text: str) -> dict:
     except:
         return {"sentiment": "Neutral"}
 
-# ==========================================
-# 4. LANGGRAPH ROUTING LOGIC
-# ==========================================
 def intent_classifier_node(state: AgentState) -> AgentState:
     msg = state["user_message"]
     prompt = f"""
@@ -208,7 +193,7 @@ def execute_tool_node(state: AgentState) -> AgentState:
     msg = state["user_message"]
     ctx_id = state["context_id"]
     
-    # Open local ephemeral DB session for the runtime context of node execution
+ 
     db = SessionLocal()
     try:
         if tool == "log_interaction":
@@ -238,7 +223,6 @@ def execute_tool_node(state: AgentState) -> AgentState:
         
     return state
 
-# Compose LangGraph State Machine Workflow Graph
 workflow = StateGraph(AgentState)
 workflow.add_node("classifier", intent_classifier_node)
 workflow.add_node("executor", execute_tool_node)
@@ -258,9 +242,7 @@ workflow.add_conditional_edges(
 workflow.add_edge("executor", END)
 compiled_agent = workflow.compile()
 
-# ==========================================
-# 5. FASTAPI ROUTES
-# ==========================================
+
 app = FastAPI(title="AI-First CRM HCP Module Backend", version="1.0")
 
 app.add_middleware(
@@ -283,7 +265,7 @@ def handle_ai_chat(req: ChatRequest, db: Session = Depends(get_db)):
     }
     output_state = compiled_agent.invoke(initial_state)
     
-    # If log interaction tool completed successfully, write down entry immediately to DB
+    
     if output_state["selected_tool"] == "log_interaction" and output_state["extracted_data"]:
         data = output_state["extracted_data"]
         new_log = InteractionModel(
