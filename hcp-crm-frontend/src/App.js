@@ -21,33 +21,37 @@ function App() {
     dispatch(updateField({ field, value }));
   };
 
-
- 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setStatusMessage({ type: '', text: '' });
 
-    // 🚨 FORCE EXTRACTION: Read directly from what you see on the screen!
+    const getVal = (selector, fallback) => {
+      const el = document.querySelector(selector);
+      return (el && el.value && el.value.trim() !== "") ? el.value : fallback;
+    };
+
     try {
       const payload = {
-        hcp_name: document.querySelector('input[placeholder="Dr. Jane Doe"]')?.value || formData.hcp_name || "Unknown Doctor",
-        interaction_type: document.querySelector('select')?.value || formData.interaction_type || "Meeting",
-        date: document.querySelector('input[type="date"]')?.value || formData.date || "",
-        time: document.querySelector('input[type="time"]')?.value || formData.time || "",
-        attendees: document.querySelector('input[placeholder="Medical staff, assistants..."]')?.value || formData.attendees || "",
-        topics_discussed: document.querySelector('textarea[placeholder*="What parameters"]')?.value || formData.topics_discussed || "",
-        materials_shared: document.querySelector('input[placeholder*="Brochures"]')?.value || formData.materials_shared || "",
-        samples_distributed: document.querySelector('input[placeholder*="Product packages"]')?.value || formData.samples_distributed || "",
-        observed_sentiment: formData.sentiment || formData.observed_sentiment || "Neutral",
-        outcomes: document.querySelector('textarea[placeholder*="Acknowledge"]')?.value || formData.outcomes || "",
-        follow_up_actions: document.querySelector('textarea[placeholder*="Next scheduled"]')?.value || formData.followup_actions || formData.follow_up_actions || ""
+        hcp_name: getVal('input[placeholder="Dr. Jane Doe"]', formData.hcp_name || "Unknown Doctor"),
+        interaction_type: getVal('select', formData.interaction_type || "Meeting"),
+        date: getVal('input[type="date"]', formData.date || "2026-07-08"),
+        time: getVal('input[type="time"]', formData.time || "18:43"),
+        attendees: getVal('input[placeholder="Medical staff, assistants..."]', formData.attendees || ""),
+        topics_discussed: getVal('textarea[placeholder*="What parameters"]', formData.topics_discussed || ""),
+        materials_shared: getVal('input[placeholder*="Brochures"]', formData.materials_shared || ""),
+        samples_distributed: getVal('input[placeholder*="Product packages"]', formData.samples_distributed || ""),
+        sentiment: formData.sentiment || formData.observed_sentiment || "Neutral",
+        outcomes: getVal('textarea[placeholder*="Acknowledge"]', formData.outcomes || ""),
+        followup_actions: (() => {
+          const rawValue = formData.followup_actions || formData.follow_up_actions || getVal('textarea[placeholder*="Next scheduled"]', "");
+          return Array.isArray(rawValue) ? rawValue.join(", ") : (rawValue || "");
+        })()
       };
 
-      console.log("CRITICAL SUBMIT RUNNING - Target Payload:", payload);
+      console.log("Submitting verified payload to backend:", payload);
 
-      // Explicit direct IP to confirm endpoint
+      // 🟢 UPDATED: Points to your live Railway instance
       await axios.post('https://ai-first-hcp-crm-production.up.railway.app/api/interactions', payload);
- 
       
       setStatusMessage({ type: 'success', text: 'Interaction logged successfully to database!' });
       alert('Interaction Logged Successfully into DB!');
@@ -58,6 +62,7 @@ function App() {
       alert('Error saving interaction entry.');
     }
   };
+
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     
@@ -67,24 +72,24 @@ function App() {
     setLoading(true);
 
     try {
+      // 🟢 UPDATED: Points to your live Railway instance
       const res = await axios.post('https://ai-first-hcp-crm-production.up.railway.app/api/chat', {
-    
         message: userMsg,
         context_interaction_id: activeId
       });
 
-      dispatch(addChatMessage({ sender: 'ai', text: res.data.reply || res.data.data?.reply || "Parsed successfully." }));
+      dispatch(addChatMessage({ sender: 'ai', text: res.data.reply || "Parsed successfully." }));
 
-      // Direct data payload mapping normalization fallback
-      const extracted = res.data.extracted_data || res.data.data;
+      const extracted = res.data.extracted_data;
       if (extracted) {
         dispatch(setAllFields(extracted));
-        // Keep radio selection sync aligned
-        if (extracted.observed_sentiment) {
-          dispatch(updateField({ field: 'sentiment', value: extracted.observed_sentiment }));
+        if (extracted.sentiment) {
+          dispatch(updateField({ field: 'sentiment', value: extracted.sentiment }));
+          dispatch(updateField({ field: 'observed_sentiment', value: extracted.sentiment }));
         }
-        if (extracted.follow_up_actions) {
-          dispatch(updateField({ field: 'followup_actions', value: extracted.follow_up_actions }));
+        if (extracted.followup_actions) {
+          dispatch(updateField({ field: 'followup_actions', value: extracted.followup_actions }));
+          dispatch(updateField({ field: 'follow_up_actions', value: extracted.followup_actions }));
         }
       }
     } catch (err) {
@@ -127,8 +132,8 @@ function App() {
       {/* TWO COLUMN PANEL VIEW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '32px', alignItems: 'start' }}>
         
-        {/* LEFT COLUMN: CRISP DATA ENTRY CONTAINER */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '32px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+        {/* LEFT COLUMN: DATA ENTRY CONTAINER */}
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '32px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
             <div style={{ padding: '6px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '6px' }}><Sparkles size={18}/></div>
             <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b', margin: 0 }}>Interaction Summary</h2>
@@ -207,10 +212,20 @@ function App() {
 
             <div style={{ marginBottom: '28px' }}>
               <label style={labelStyle}><FileText size={14} style={{ marginRight: '6px' }}/> Action Items & Follow-ups</label>
-              <textarea style={{...inputStyle, height: '70px', resize: 'vertical'}} placeholder="Next scheduled meeting objectives..." value={formData.followup_actions || formData.follow_up_actions || ''} onChange={(e) => {
-                handleInputChange('followup_actions', e.target.value);
-                handleInputChange('follow_up_actions', e.target.value);
-              }} />
+              <textarea 
+                style={{...inputStyle, height: '70px', resize: 'vertical'}} 
+                placeholder="Next scheduled meeting objectives..." 
+                value={(() => {
+                  const val = formData.followup_actions || formData.follow_up_actions || '';
+                  if (Array.isArray(val)) return val.join(', ');
+                  if (typeof val === 'object' && val !== null) return JSON.stringify(val);
+                  return val;
+                })()} 
+                onChange={(e) => {
+                  handleInputChange('followup_actions', e.target.value);
+                  handleInputChange('follow_up_actions', e.target.value);
+                }} 
+              />
             </div>
 
             <button type="submit" style={submitBtnStyle}>
@@ -219,7 +234,7 @@ function App() {
           </form>
         </div>
 
-        {/* RIGHT COLUMN: MODERN INTERACTIVE MESSAGING CANVAS */}
+        {/* RIGHT COLUMN: INTERACTIVE MESSAGING CANVAS */}
         <div style={{ display: 'flex', flexDirection: 'column', height: '780px', backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
           <div style={{ padding: '20px 24px', backgroundColor: '#0f172a', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ backgroundColor: '#1e293b', padding: '8px', borderRadius: '8px', color: '#38bdf8' }}>
@@ -231,7 +246,6 @@ function App() {
             </div>
           </div>
 
-          {/* CHAT CHANNELS MESSAGES CONTAINER */}
           <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#fafafa' }}>
             {chatHistory.length === 0 && (
               <div style={{ margin: 'auto', textAlign: 'center', maxWidth: '240px', color: '#94a3b8' }}>
@@ -247,7 +261,6 @@ function App() {
                   borderRadius: msg.sender === 'user' ? '12px 12px 0 12px' : '12px 12px 12px 0',
                   fontSize: '14px',
                   lineHeight: '1.5',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                   backgroundColor: msg.sender === 'user' ? '#2563eb' : '#ffffff',
                   color: msg.sender === 'user' ? '#ffffff' : '#334155',
                   border: msg.sender === 'user' ? 'none' : '1px solid #e2e8f0'
@@ -258,14 +271,13 @@ function App() {
             ))}
             
             {loading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontStyle: 'italic', paddingLeft: '4px' }}>
-                <div className="animate-pulse" style={{ width: '6px', height: '6px', backgroundColor: '#2563eb', borderRadius: '50%' }}></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>
+                <div style={{ width: '6px', height: '6px', backgroundColor: '#2563eb', borderRadius: '50%' }}></div>
                 AI Agent is parsing text unstructured semantics...
               </div>
             )}
           </div>
 
-          {/* TEXT ENTRY INPUT ACTIONS BAR */}
           <div style={{ padding: '18px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', backgroundColor: '#ffffff' }}>
             <input
               style={{ ...inputStyle, borderRadius: '8px', backgroundColor: '#f8fafc' }}
@@ -286,9 +298,6 @@ function App() {
   );
 }
 
-// ---------------------------------------------------------
-// REUSABLE DECORATIVE UI LAYOUT CSS STYLES
-// ---------------------------------------------------------
 const labelStyle = {
   display: 'flex',
   alignItems: 'center',
@@ -305,9 +314,7 @@ const inputStyle = {
   borderRadius: '8px',
   fontSize: '14px',
   color: '#1e293b',
-  outline: 'none',
   boxSizing: 'border-box',
-  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
   fontFamily: 'inherit'
 };
 
@@ -321,7 +328,7 @@ const submitBtnStyle = {
   fontSize: '15px',
   fontWeight: '600',
   cursor: 'pointer',
-  transition: 'background-color 0.15s ease',
+  boxSizing: 'border-box',
   boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)'
 };
 
@@ -334,8 +341,7 @@ const sendBtnStyle = {
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'background-color 0.15s ease'
+  justifyContent: 'center'
 };
 
 export default App;
